@@ -15,7 +15,7 @@ cd whisper-service
 scripts/install.sh
 ```
 
-This syncs the pinned dependencies from `uv.lock` and installs a LaunchAgent (`com.gapsong.whisper-service`) that starts the server at login and restarts it if it crashes.
+This syncs the pinned dependencies from `uv.lock` (precompiled, so the first start is fast) and installs a LaunchAgent (`com.gapsong.whisper-service`) that starts the server at login and restarts it if it crashes.
 It listens on `http://127.0.0.1:9876` only - nothing outside the Mac can reach it.
 Run `scripts/install.sh` again after a `git pull` to update; `scripts/uninstall.sh` removes the LaunchAgent.
 

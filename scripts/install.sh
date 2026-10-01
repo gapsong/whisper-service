@@ -24,7 +24,7 @@ fi
 command -v uv >/dev/null || { echo "uv is missing: https://docs.astral.sh/uv/" >&2; exit 1; }
 
 echo "==> installing dependencies (uv.lock)"
-(cd "$REPO_DIR" && uv sync --frozen --no-dev)
+(cd "$REPO_DIR" && uv sync --frozen --no-dev --compile-bytecode)
 
 echo "==> writing $PLIST"
 mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"
@@ -65,9 +65,15 @@ EOF
 
 echo "==> (re)starting $LABEL"
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+# bootout returns before launchd has finished removing the service; an
+# immediate bootstrap then fails with "5: Input/output error". Wait it out.
+for _ in $(seq 1 50); do
+  launchctl print "$DOMAIN/$LABEL" >/dev/null 2>&1 || break
+  sleep 0.2
+done
 launchctl bootstrap "$DOMAIN" "$PLIST"
 
-for _ in $(seq 1 40); do
+for _ in $(seq 1 120); do
   if curl -fsS "http://$HOST:$PORT/health" >/dev/null 2>&1; then
     echo "==> running: http://$HOST:$PORT  (log: $LOG)"
     curl -fsS "http://$HOST:$PORT/health"; echo
