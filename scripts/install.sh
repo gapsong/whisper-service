@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Install whisper-service as a macOS LaunchAgent: it starts at login, restarts
-# if it crashes, and listens on 127.0.0.1 only. Safe to run again after a
+# if it crashes, and listens on 127.0.0.1 only. Then download and warm up the
+# model, so the very first dictation is instant. Safe to run again after a
 # `git pull` - it re-syncs the dependencies and restarts the service.
 #
 #   scripts/install.sh            install or update, then restart
@@ -21,7 +22,16 @@ if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
   echo "whisper-service needs macOS on Apple Silicon (MLX)." >&2
   exit 1
 fi
-command -v uv >/dev/null || { echo "uv is missing: https://docs.astral.sh/uv/" >&2; exit 1; }
+if ! command -v uv >/dev/null; then
+  if command -v brew >/dev/null; then
+    echo "==> installing uv (Homebrew)"
+    brew install uv
+  else
+    echo "uv is missing. Install it, then run this script again:" >&2
+    echo "  curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
+    exit 1
+  fi
+fi
 
 echo "==> installing dependencies (uv.lock)"
 (cd "$REPO_DIR" && uv sync --frozen --no-dev --compile-bytecode)
@@ -73,13 +83,41 @@ for _ in $(seq 1 50); do
 done
 launchctl bootstrap "$DOMAIN" "$PLIST"
 
+URL="http://$HOST:$PORT"
+up=0
 for _ in $(seq 1 120); do
-  if curl -fsS "http://$HOST:$PORT/health" >/dev/null 2>&1; then
-    echo "==> running: http://$HOST:$PORT  (log: $LOG)"
-    curl -fsS "http://$HOST:$PORT/health"; echo
-    exit 0
-  fi
+  if curl -fsS "$URL/health" >/dev/null 2>&1; then up=1; break; fi
   sleep 0.5
 done
-echo "service did not come up - see $LOG" >&2
-exit 1
+if [ "$up" != 1 ]; then
+  echo "service did not come up - see $LOG" >&2
+  exit 1
+fi
+echo "==> running: $URL  (log: $LOG)"
+
+# Load the model now. The first time this downloads it (~1.6 GB) into
+# ~/.cache/huggingface; later runs only load it from disk (well under a second).
+echo "==> loading the model (the first time downloads ~1.6 GB, give it a few minutes)"
+log_offset=$(wc -c < "$LOG")
+curl -fsS -X POST "$URL/start" >/dev/null
+waited=0
+until curl -fsS "$URL/health" 2>/dev/null | grep -q '"ready":true'; do
+  # A failed load (e.g. no internet for the download) drops the service back
+  # to sleeping and logs why; stop here instead of waiting for nothing.
+  if tail -c +"$((log_offset + 1))" "$LOG" | grep -q "loading the whisper model failed"; then
+    echo "loading the model failed - the reason is at the end of $LOG" >&2
+    exit 1
+  fi
+  if [ "$waited" -ge 1800 ]; then
+    echo "model not ready after 30 minutes - see $LOG" >&2
+    exit 1
+  fi
+  if [ "$waited" -gt 0 ] && [ $((waited % 15)) -eq 0 ]; then
+    echo "    still loading... ${waited}s"
+  fi
+  sleep 1
+  waited=$((waited + 1))
+done
+echo "==> ready: whisper-service answers on $URL"
+echo
+echo "Next: install the Mac app - https://github.com/gapsong/mac-voice-dictation"
