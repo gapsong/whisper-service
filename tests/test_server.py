@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 
 from app.engine import LOADING, READY, SLEEPING, Engine
 from app.server import create_app
-from tests.wav import one_second_of_silence
+from tests.wav import fixture_bytes, one_second_of_silence
+
+SPEECH = fixture_bytes("speech_message.wav")
 
 
 class FakeBackend:
@@ -87,7 +89,7 @@ def test_start_twice_loads_once(backend):
 
 def test_transcribe_while_asleep_returns_503_and_starts_loading(backend):
     with make_client(backend) as client:
-        response = client.post("/transcribe", content=one_second_of_silence(),
+        response = client.post("/transcribe", content=SPEECH,
                                headers={"Content-Type": "audio/wav", "X-Language": "de"})
         assert response.status_code == 503
 
@@ -101,7 +103,7 @@ def test_transcribe_when_ready(backend):
         client.post("/start")
         wait_for(lambda: is_ready(client))
 
-        response = client.post("/transcribe", content=one_second_of_silence(),
+        response = client.post("/transcribe", content=SPEECH,
                                headers={"Content-Type": "audio/wav", "X-Language": "de"})
         assert response.status_code == 200
         body = response.json()
@@ -119,8 +121,29 @@ def test_language_header(backend, header, expected):
         headers = {"Content-Type": "audio/wav"}
         if header is not None:
             headers["X-Language"] = header
-        client.post("/transcribe", content=one_second_of_silence(), headers=headers)
+        client.post("/transcribe", content=SPEECH, headers=headers)
         assert backend.languages == [expected]
+
+
+def test_silence_is_empty_text_without_running_whisper(backend):
+    backend.allow_load.set()
+    with make_client(backend) as client:
+        client.post("/start")
+        wait_for(lambda: is_ready(client))
+
+        response = client.post("/transcribe", content=one_second_of_silence(),
+                               headers={"Content-Type": "audio/wav", "X-Language": "de"})
+        assert response.status_code == 200
+        assert response.json()["text"] == ""
+        assert backend.languages == []  # whisper never ran
+
+
+def test_silence_while_asleep_is_empty_text_not_503(backend):
+    with make_client(backend) as client:
+        response = client.post("/transcribe", content=one_second_of_silence(),
+                               headers={"Content-Type": "audio/wav"})
+        assert response.status_code == 200
+        assert response.json()["text"] == ""
 
 
 def test_bad_audio_is_400(backend):
@@ -151,7 +174,7 @@ def test_use_keeps_model_loaded(backend):
         wait_for(lambda: is_ready(client))
         for _ in range(4):
             time.sleep(0.2)
-            client.post("/transcribe", content=one_second_of_silence(), headers={"Content-Type": "audio/wav"})
+            client.post("/transcribe", content=SPEECH, headers={"Content-Type": "audio/wav"})
         assert backend.unloads == 0
         assert is_ready(client)
 

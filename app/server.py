@@ -11,6 +11,10 @@ work against this server by changing only their server URL.
 While the model is still loading, /transcribe answers 503. Both clients poll
 /health after /start and also retry 500/503, so a cold start just works.
 
+Before whisper runs, the recording is cut down to the parts with speech
+(app/vad.py). A recording without speech gets {"text": ""} at once, even while
+the model sleeps - otherwise whisper would answer it with "Vielen Dank.".
+
 `state` is only ever "sleeping" or "ready": the Mac client decodes it into a
 two-value enum, so "loading" is reported as "sleeping" with ready=false.
 """
@@ -26,6 +30,7 @@ from fastapi.responses import JSONResponse
 
 from app.audio import AudioError, decode_wav
 from app.engine import READY, SLEEPING, Backend, Engine, NotReady
+from app.vad import keep_speech, warm_up
 
 DEFAULT_MODEL = "mlx-community/whisper-large-v3-turbo"
 DEFAULT_IDLE_UNLOAD_SECONDS = 30 * 60
@@ -62,9 +67,15 @@ def create_app(backend: Backend, model_name: str, idle_unload_seconds: float) ->
             return JSONResponse(status_code=400, content={"detail": str(exc)})
 
         started = time.monotonic()
+        # Off the event loop: the VAD takes a few ms per second of audio.
+        speech = await run_in_threadpool(keep_speech, samples)
+        if speech.size == 0:
+            elapsed_ms = round((time.monotonic() - started) * 1000)
+            return {"text": "", "language": language, "ms": elapsed_ms}
+
         try:
             # Wait for the worker in a thread, so /health polls stay responsive.
-            result = await run_in_threadpool(engine.transcribe, samples, language)
+            result = await run_in_threadpool(engine.transcribe, speech, language)
         except NotReady:
             return JSONResponse(status_code=503, content={"detail": "model is loading, retry"})
         elapsed_ms = round((time.monotonic() - started) * 1000)
@@ -79,4 +90,5 @@ def create_default_app() -> FastAPI:
 
     model = os.environ.get("WHISPER_MODEL", DEFAULT_MODEL)
     idle = float(os.environ.get("WHISPER_IDLE_UNLOAD_SECONDS", DEFAULT_IDLE_UNLOAD_SECONDS))
+    warm_up()
     return create_app(MlxWhisperBackend(model), model, idle)

@@ -61,19 +61,26 @@ That also queues concurrent requests one after another, which is what a single G
 MLX compiles its GPU kernels on first use, which made the first request after a load take 2.7 s instead of 0.2 s.
 Loading therefore ends with a dummy transcription of one second of silence (`app/mlx_backend.py`).
 
-**Raw text out.**
-The server returns whisper's text as is.
-Filtering whisper's silence artifacts ("Untertitelung des ZDF, 2020") stays in the clients, where it already lives.
+**Only speech reaches whisper (VAD).**
+Whisper invents text for audio without speech: a silent tap, room noise or a long pause comes back as "Vielen Dank." - with full confidence (`no_speech_prob` 0.0 on large-v3-turbo), so whisper cannot tell, and loudness cannot either (a key click is nearly as loud as speech).
+[Silero VAD](https://github.com/snakers4/silero-vad) can: on silence, room noise and key clicks it stayed at or below 0.38, on normal, quiet and noisy speech and a single short "Ja." it reached 0.96 - 1.00.
+So `app/vad.py` first cuts the recording down to the speech: a recording without speech gets `{"text": ""}` at once (the clients show "No speech detected"), silence before and after is removed, and pauses longer than 0.7 s are shortened to 0.3 s.
+Saying "Vielen Dank" still works - only silence is blocked.
+
+**Otherwise raw text out.**
+Beyond that the server returns whisper's text as is.
+The clients' narrow silence-artifact filter ("Untertitelung des ZDF, 2020") stays where it already lives.
 
 ## Layout
 
 ```
 app/audio.py         WAV bytes -> float samples, strict 16 kHz / 16-bit
+app/vad.py           keep only the speech (Silero VAD); empty if nobody spoke
 app/engine.py        sleeping / loading / ready state, idle unload, the worker thread
 app/mlx_backend.py   whisper on MLX (load, unload, transcribe)
 app/server.py        the HTTP contract (FastAPI)
 scripts/install.sh   LaunchAgent install / update
-tests/               contract and audio tests with a fake model
+tests/               contract, audio and VAD tests (fake whisper, real VAD)
 ```
 
 ## Tests
@@ -82,8 +89,8 @@ tests/               contract and audio tests with a fake model
 uv run pytest
 ```
 
-The tests use a fake model, so they run in about a second without a GPU.
-They cover the full contract: asleep at boot, `/start` not blocking, 503 while loading, the language header, bad audio, idle unload and wake-up, and recovery from a failed load.
+The tests use a fake whisper, so they run in about two seconds without a GPU; the VAD runs for real on recorded speech in `tests/fixtures/`.
+They cover the full contract: asleep at boot, `/start` not blocking, 503 while loading, the language header, bad audio, idle unload and wake-up, recovery from a failed load, and that silence, noise and key clicks never reach whisper while normal, quiet and short speech always does.
 
 Run the server in the foreground for manual checks:
 
