@@ -3,6 +3,8 @@ name = "whisper-service"
 version = "0.1.0"
 description = "Local whisper speech-to-text server for push-to-talk dictation (Apple Silicon, MLX)"
 requires-python = ">=3.12"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = [
     "fastapi",
     "mlx-whisper",

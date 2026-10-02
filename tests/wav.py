@@ -25,7 +25,9 @@ def one_second_of_silence() -> bytes:
 
 
 # --- real speech -------------------------------------------------------------
-# German sentences spoken by macOS `say -v Anna`, 16 kHz mono 16-bit:
+# German sentences synthesized with Piper and the "Thorsten" voice
+# (rhasspy/piper-voices de_DE-thorsten-medium; voice model MIT, Thorsten-Voice
+# dataset CC0), converted to 16 kHz mono 16-bit. See tests/fixtures/README.md.
 #   speech_message.wav  "Ich schreibe gerade eine Nachricht an Max."
 #   speech_meeting.wav  "Wir treffen uns morgen um zehn."
 #   speech_ja.wav       "Ja."
