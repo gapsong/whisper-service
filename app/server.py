@@ -1,7 +1,7 @@
-"""HTTP API, identical to the old gpuserver whisper service.
+"""HTTP API for push-to-talk dictation clients such as mac-voice-dictation.
 
-mac-voice-dictation and linux-voice-dictation both speak this contract, so they
-work against this server by changing only their server URL.
+Any client that speaks this contract works against this server by changing
+only its server URL.
 
     GET  /health      -> {"model", "state", "ready"}     state: sleeping | ready
     POST /start       -> same body; starts loading the model, never blocks

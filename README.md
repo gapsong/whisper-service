@@ -17,7 +17,7 @@ scripts/install.sh
 ```
 
 That is all.
-The script installs its dependencies (and [uv](https://docs.astral.sh/uv/) via Homebrew if it is missing), sets the server up to start at login, and downloads the model once (~1.6 GB, a few minutes).
+The script installs [uv](https://docs.astral.sh/uv/) if it is missing (with Homebrew if you have it, else with uv's official installer), then Python and the dependencies, sets the server up to start at login, and downloads the model once (~1.6 GB, a few minutes).
 When it prints `ready`, install the [Mac app](https://github.com/gapsong/mac-voice-dictation) - it finds the server on its own.
 
 The server listens on `http://127.0.0.1:9876` only, so nothing outside your Mac can reach it.
