@@ -22,19 +22,30 @@ if [ "$(uname -s)" != "Darwin" ] || [ "$(uname -m)" != "arm64" ]; then
   echo "whisper-service needs macOS on Apple Silicon (MLX)." >&2
   exit 1
 fi
-if ! command -v uv >/dev/null; then
+# uv installs Python and the locked dependencies. A fresh Mac has neither uv nor
+# Homebrew, so fall back to uv's official installer. It puts uv into
+# ~/.local/bin; UV_NO_MODIFY_PATH keeps it from editing shell profiles, so this
+# script calls uv by its full path instead.
+UV="$(command -v uv || true)"
+if [ -z "$UV" ] && [ -x "$HOME/.local/bin/uv" ]; then
+  UV="$HOME/.local/bin/uv"
+fi
+if [ -z "$UV" ]; then
   if command -v brew >/dev/null; then
     echo "==> installing uv (Homebrew)"
     brew install uv
+    UV="$(command -v uv)"
   else
-    echo "uv is missing. Install it, then run this script again:" >&2
-    echo "  curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-    exit 1
+    echo "==> installing uv (official installer, into ~/.local/bin)"
+    curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh
+    UV="$HOME/.local/bin/uv"
   fi
 fi
 
+# .python-version pins the Python that every dependency has a prebuilt wheel
+# for; uv downloads it if the Mac does not have it.
 echo "==> installing dependencies (uv.lock)"
-(cd "$REPO_DIR" && uv sync --frozen --no-dev --compile-bytecode)
+(cd "$REPO_DIR" && "$UV" sync --frozen --no-dev --compile-bytecode)
 
 echo "==> writing $PLIST"
 mkdir -p "$(dirname "$PLIST")" "$(dirname "$LOG")"
