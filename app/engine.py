@@ -1,6 +1,6 @@
 """Owns the whisper model: loads it on demand and unloads it when idle.
 
-The service boots asleep, like the old gpuserver: the model costs no memory
+The service boots asleep: the model costs no memory
 until a client presses its dictation key and calls POST /start. After
 `idle_unload_seconds` without a transcription the model is unloaded again.
 
